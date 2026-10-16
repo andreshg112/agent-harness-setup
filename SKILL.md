@@ -20,6 +20,28 @@ Its goal is to configure a repository so you can:
 
 ---
 
+## Inputs & Outputs
+
+### Inputs (Discovery & Developer Preferences)
+To tailor the harness to the project, gather or ask for:
+1. **Tech Stack & Tooling:** Detected from project manifests (`package.json`, `composer.json`, `pyproject.toml`, `Cargo.toml`, `go.mod`, etc.).
+2. **Branching Strategy:**
+   - *Option A: Branch & PR per Issue (Recommended for Autonomous AI):* Isolates agent work, enables pre-merge code review diffs, and keeps `main` green.
+   - *Option B: Direct-to-Main / Trunk (Solo Lightweight):* Code review happens locally on uncommitted changes (`Review uncommitted changes`) before pushing directly to `main`.
+3. **Issue Tracking Tools:** GitHub Issues (`github-mcp-server` / `gh` CLI), Linear, Jira, or local task files.
+4. **Code Review Surfaces:** Whether the repo uses **GitHub Copilot Code Review** (requiring `.github/instructions/pr-review.instructions.md`), local two-chat reviews (e.g., Claude Sonnet / Gemini in a separate chat), or human review only.
+5. **Architectural & Security Invariants:** Non-negotiable layer boundaries, PHI/PII encryption, transaction rules, or migration policies.
+
+### Outputs (Harness Deliverables)
+A complete agent harness produces:
+1. **Root `AGENTS.md` ($\le 24,000$ bytes):** Consolidated, deduplicated operational rules covering issue tooling, review rules, coding style, testing strategy, and pre-push loop.
+2. **`.github/instructions/pr-review.instructions.md` (Optional):** Only generated if GitHub Copilot Code Review is used; routes to `AGENTS.md` and `code-review-skill` with `applyTo: "**"`.
+3. **3-Phase `pre-push` Hook:** Fast Auto-Fixers $\rightarrow$ Strict Validation/Tests $\rightarrow$ Clean Working Tree Check.
+4. **CI Workflow (`.github/workflows/`):** Deterministic gates matching the pre-push validations.
+5. **Architecture & Drift Tests (`ArchTest`):** Automated checks for rule adherence, link integrity, command drift, and size budgets.
+
+---
+
 ## Core Principles of a High-Signal Agent Harness
 
 1. **Zero-Tool-Call Visibility for Core Rules (`AGENTS.md <= 24,000` bytes):**
@@ -65,9 +87,12 @@ Organize `AGENTS.md` into clean, high-density sections (using short 1-line Good/
   - Instruct the agent **never** to use generic web-page fetch tools (`read_url_content`, `WebFetch`) on issue tracker URLs (e.g., `github.com`).
   - Instruct it to immediately fetch issue/PR titles, bodies, labels, and comments using configured MCP tools (e.g., `github-mcp-server`: `issue_read`, `pull_request_read`) or CLI tools (`gh issue view <id> --comments`, `gh pr view <id> --comments`).
 - **Branching & Parallel Session Safety:**
-  - Never push directly to protected branches (`main` / `master`).
-  - **Branch Safety Check:** Before creating or switching branches, always run `git status` and `git branch --show-current`. If there are uncommitted changes or the workspace is on an unmerged branch for a *different* issue, **stop and ask the user** before switching so you never overwrite another active session's work.
-  - Define the branch naming convention (e.g., `<issue-number>-<short-slug>`, avoiding `/` if required by deployment/preview tooling).
+  - *For Branch & PR Projects (Recommended for Autonomous AI):*
+    - Never push directly to protected branches (`main` / `master`). The feature branch and PR diff are what enable pre-merge testing, deployment previews, and the multi-model code review harness.
+    - **Branch Safety Check:** Before creating or switching branches, always run `git status` and `git branch --show-current`. If there are uncommitted changes or the workspace is on an unmerged branch for a *different* issue, **stop and ask the user** before switching so you never overwrite another active session's work.
+    - Define the branch naming convention (e.g., `<issue-number>-<short-slug>`, avoiding `/` if required by preview/deployment tooling).
+  - *For Direct-to-Main Projects (Solo Trunk-Based):*
+    - If the developer explicitly chooses to push directly to `main`, instruct the agent that code review must be performed locally on **uncommitted changes** (`Review uncommitted changes`) *before* committing and pushing. Pre-push hooks and fast auto-fixers become the sole safety gate before code hits `main`.
 - **Code Review Workflow (Local Branch & Cloud PR Reviews):**
   - When prompted with `"Review current branch"`, `"Review uncommitted changes"`, or `"Review PR #<id>"`:
     1. Consult `.agents/skills/code-review-skill/SKILL.md` (if installed) and `.github/instructions/pr-review.instructions.md` (if using GitHub Copilot).
